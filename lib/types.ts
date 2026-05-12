@@ -4,6 +4,41 @@
 
 export type Role = "admin" | "loan_officer" | "field_officer" | "savings_member";
 
+export type Permission =
+  | "view_dashboard"
+  | "manage_clients"
+  | "manage_loans"
+  | "manage_savings"
+  | "view_transactions"
+  | "view_reports"
+  | "manage_settings"
+  | "approve_loans"
+  | "disburse_loans"
+  | "write_off_loans"
+  | "manage_users"
+  | "run_sync"
+  | "export_data"
+  | "manage_fees";
+
+export const rolePermissions: Record<Role, Permission[]> = {
+  admin: [
+    "view_dashboard", "manage_clients", "manage_loans", "manage_savings",
+    "view_transactions", "view_reports", "manage_settings", "approve_loans",
+    "disburse_loans", "write_off_loans", "manage_users", "run_sync",
+    "export_data", "manage_fees",
+  ],
+  loan_officer: [
+    "view_dashboard", "manage_clients", "manage_loans", "manage_savings",
+    "view_transactions", "view_reports", "approve_loans", "disburse_loans",
+  ],
+  field_officer: [
+    "view_dashboard", "manage_clients", "view_transactions", "run_sync",
+  ],
+  savings_member: [
+    "view_dashboard", "view_transactions", "manage_savings",
+  ],
+};
+
 // ============================================================
 // Filter / Pagination Types
 // ============================================================
@@ -21,6 +56,7 @@ export type SearchParams = {
 
 export type GetClientsParams = PaginationParams & {
   query?: string;
+  status?: string;
 };
 
 export type PagedResult<T> = {
@@ -50,6 +86,27 @@ export type DashboardSnapshot = {
   clients: ClientRecord[];
   loans: LoanRecord[];
   recentTransactions: TransactionRecord[];
+  pendingActions: DashboardAction[];
+};
+
+export type DashboardAction = {
+  label: string;
+  href: string;
+  icon: string;
+  badge?: string;
+};
+
+// ============================================================
+// Auth / Session
+// ============================================================
+
+export type SessionUser = {
+  id: string;
+  email?: string;
+  phone?: string;
+  fullName: string;
+  role: Role;
+  status: "active" | "inactive";
 };
 
 // ============================================================
@@ -76,14 +133,14 @@ export type ClientRecord = {
   gender?: "male" | "female" | "other";
   status: "active" | "review" | "inactive";
   savingsOnly: boolean;
+  loanOfficerId?: string;
+  fieldOfficerId?: string;
   joinedAt: string;
 };
 
 export type ClientDetail = ClientRecord & {
   nickname?: string;
   altPhone?: string;
-  loanOfficerId?: string;
-  fieldOfficerId?: string;
   oldMemberId?: string;
   homeOwnership?: "Rented" | "Owned";
   homePlotName?: string;
@@ -160,6 +217,7 @@ export type GetLoansParams = PaginationParams &
     status?: string;
     category?: string;
     clientId?: string;
+    workflowStatus?: string;
   };
 
 export type PaymentBreakdownRecord = {
@@ -177,6 +235,51 @@ export type PaymentBreakdownRecord = {
   notes?: string;
 };
 
+export type LoanApplication = {
+  clientId: string;
+  category: string;
+  amountRequested: number;
+  purpose: string;
+  termWeeks: number;
+  repaymentFrequency: "daily" | "weekly" | "monthly";
+  collateral?: CollateralRecord;
+  guarantors: GuarantorRecord[];
+};
+
+export type LoanSimulatorInput = {
+  principal: number;
+  interestRate: number;
+  termWeeks: number;
+  repaymentFrequency: "daily" | "weekly" | "monthly";
+  processingFee?: number;
+  insuranceFee?: number;
+  savingsDeduction?: number;
+};
+
+export type LoanSimulatorOutput = {
+  principal: number;
+  totalInterest: number;
+  processingFee: number;
+  insuranceFee: number;
+  totalDeductions: number;
+  totalRepayment: number;
+  netDisbursed: number;
+  weeklyPayment: number;
+  dailyPayment: number;
+  monthlyPayment: number;
+  paymentSchedule: AmortizationEntry[];
+};
+
+export type AmortizationEntry = {
+  week: number;
+  date: string;
+  beginningBalance: number;
+  principalPayment: number;
+  interestPayment: number;
+  totalPayment: number;
+  endingBalance: number;
+};
+
 // ============================================================
 // Savings
 // ============================================================
@@ -189,10 +292,19 @@ export type SavingsRecord = {
   mandatoryShares: number;
   multiplier: number;
   withdrawable: number;
+  total: number;
   updatedAt: string;
 };
 
 export type GetSavingsParams = PaginationParams & { searchQuery?: string };
+
+export type SavingsContribution = {
+  clientId: string;
+  amount: number;
+  bucket: "mandatory" | "mandatory_shares" | "multiplier" | "withdrawable";
+  notes?: string;
+  date: string;
+};
 
 // ============================================================
 // Transaction
@@ -202,11 +314,13 @@ export type TransactionRecord = {
   id: string;
   source: "legacy" | "live" | "mpesa";
   clientName: string;
+  clientId?: string;
   amount: number;
   method: string;
   reference: string;
   recordedAt: string;
   notes: string;
+  type: "deposit" | "withdrawal" | "payment" | "reversal";
 };
 
 export type GetTransactionsParams = PaginationParams & SearchParams;
@@ -220,12 +334,15 @@ export type ReportsSnapshot = {
   memberSavings: number;
   purposePool: number;
   collectionToday: number;
+  totalDisbursed: number;
+  totalRepaid: number;
   loanBreakdown: {
     active: number;
     approved: number;
     pending: number;
     defaulted: number;
     completed: number;
+    rejected: number;
   };
   savingsBreakdown: {
     mandatory: number;
@@ -266,6 +383,7 @@ export type SettingsSnapshot = {
   deploymentMode: string;
   supabaseReady: boolean;
   mpesaReady: boolean;
+  dbSchemaReady: boolean;
   nextSteps: string[];
 };
 
