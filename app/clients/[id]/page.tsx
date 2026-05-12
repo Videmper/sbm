@@ -38,7 +38,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
 
       setClient(clientData);
       setLoans(loansData?.data ?? []);
-      const clientSavings = savingsData?.data.find((s) => s.clientId === id) ?? null;
+const clientSavings = savingsData?.data.find((s: SavingsRecord) => s.clientId === id) ??  null;
       setSavings(clientSavings ?? {
         id, clientId: id, clientName: clientData?.fullName ?? "",
         mandatory: 0, mandatoryShares: 0, multiplier: 0, withdrawable: 0, total: 0, updatedAt: new Date().toISOString(),
@@ -77,7 +77,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
       </button>
 
       {/* Profile Header */}
-      <SectionCard style={{ marginBottom: 22 }}>
+      <SectionCard title="Profile" style={{ marginBottom: 22 }}>
         <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{
             width: 72, height: 72, borderRadius: 20,

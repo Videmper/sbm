@@ -195,8 +195,7 @@ export default function SettingsPage() {
             </SectionCard>
 
             <SectionCard title="Supabase Setup">
-              <ol className="bullet-list" style={{ listStyle: "decimal", paddingLeft: 20 }} {/**/}
-              >
+              <ol className="bullet-list" style={{ listStyle: "decimal", paddingLeft: 20 }}>
                 <li><strong>Create Project</strong> at supabase.com/dashboard</li>
                 <li><strong>Run Schema</strong> — Paste fullupdate.sql in SQL Editor → New Query</li>
                 <li><strong>Enable Auth</strong> — Configure email/password and OTP providers</li>

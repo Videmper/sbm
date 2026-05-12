@@ -1,11 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // React Strict Mode is enabled by default in Next.js 16
-  experimental: {
-    serverComponentsExternalPackages: ["@supabase/supabase-js"],
-  },
   images: {
-    domains: ["cdn.jsdelivr.net", "sautiyamkenya.co.ke"],
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "cdn.jsdelivr.net",
+      },
+      {
+        protocol: "https",
+        hostname: "sautiyamkenya.co.ke",
+      },
+    ],
   },
   headers: async () => [
     {

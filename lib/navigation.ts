@@ -9,8 +9,6 @@ import {
   Landmark,
   Settings,
   ShieldCheck,
-  Users,
-  Wallet,
 } from "lucide-react";
 
 interface NavItem {

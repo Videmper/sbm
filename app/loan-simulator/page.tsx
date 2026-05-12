@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { StatCard } from "@/components/stat-card";
-import { Calculator, AlertTriangle, ArrowLeft, DollarSign, Percent, Calendar } from "lucide-react";
+import { Calculator, AlertTriangle, ArrowLeft, DollarSign, Percent, Calendar, ArrowDown } from "lucide-react";
 import type { LoanSimulatorInput, LoanSimulatorOutput, AmortizationEntry } from "@/lib/types";
 
 function calculateLoan(input: LoanSimulatorInput): LoanSimulatorOutput {
@@ -182,7 +182,7 @@ export default function LoanSimulatorPage() {
                 <span className="sim-result-value" style={{ color: "var(--sbc-emerald)" }}>KES {result.totalRepayment.toLocaleString()}</span>
               </div>
               <div className="sim-result-row">
-                <span className="sim-result-label"><TrendingDown size={14} /> Net Disbursed</span>
+                <span className="sim-result-label"><ArrowDown size={14} /> Net Disbursed</span>
                 <span className="sim-result-value">KES {result.netDisbursed.toLocaleString()}</span>
               </div>
             </div>

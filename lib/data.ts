@@ -2,6 +2,7 @@ import { formatCompactNumber, formatCurrency } from "@/lib/format";
 import { createSupabaseAdminClient, isSupabaseConfigured } from "@/lib/supabase";
 import type {
   ClientRecord,
+  DashboardAction,
   DashboardSnapshot,
   GetClientsParams,
   GetLoansParams,
@@ -226,7 +227,7 @@ export async function getClientsSnapshot(params?: GetClientsParams): Promise<Pag
 // Client Detail
 // ============================================================
 
-export async function getClientById(clientId: string): Promise<ClientRecord | null> {
+export async function getClientById(clientId: string): Promise<ClientDetail | null> {
   if (!isSupabaseConfigured()) return null;
 
   const supabase = createSupabaseAdminClient();
@@ -258,6 +259,13 @@ export async function getClientById(clientId: string): Promise<ClientRecord | nu
     gender: data.gender as any,
     loanOfficerId: data.loan_officer_id ? String(data.loan_officer_id) : undefined,
     fieldOfficerId: data.field_officer_id ? String(data.field_officer_id) : undefined,
+    guarantors: [],
+    collateral: [],
+    visits: [],
+    followups: [],
+    loans: [],
+    transactions: [],
+    nextOfKin: [],
   };
 }
 
@@ -839,6 +847,8 @@ export async function getSyncSnapshot(): Promise<SyncSnapshot> {
 // ============================================================
 // Settings
 // ============================================================
+
+export type { SettingsSnapshot } from "./types";
 
 export async function getSettingsSnapshot(): Promise<SettingsSnapshot> {
   return {

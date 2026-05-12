@@ -8,7 +8,7 @@ import { createSupabaseAdminClient, isSupabaseConfigured } from "@/lib/supabase"
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json(
@@ -18,6 +18,7 @@ export async function GET(
   }
 
   try {
+    const { id } = await params;
     const supabase = createSupabaseAdminClient();
     const { data: loan, error } = await supabase
       .from("loans")
@@ -32,7 +33,7 @@ export async function GET(
         guarantors(id, name, relation, phone, guaranteed_amount, signature_confirmed),
         collateral(id, collateral_type, make_model, value_amount, status)
       `)
-      .eq("id", params.id)
+      .eq("id", id)
       .single();
 
     if (error) throw error;
@@ -59,7 +60,7 @@ export async function GET(
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json(
@@ -69,6 +70,7 @@ export async function POST(
   }
 
   try {
+    const { id } = await params;
     const body = await request.json();
     const supabase = createSupabaseAdminClient();
 
@@ -83,8 +85,8 @@ export async function POST(
     // Fetch loan to get current balance
     const { data: loan, error: loanError } = await supabase
       .from("loans")
-      .select("balance, total_repayment, amount_approved")
-      .eq("id", params.id)
+      .select("balance, total_repayment, amount_approved, status, workflow_status")
+      .eq("id", id)
       .single();
 
     if (loanError || !loan) throw new Error("Loan not found");
@@ -102,7 +104,7 @@ export async function POST(
     const { data: breakdown, error: breakdownError } = await supabase
       .from("loan_payment_breakdowns")
       .insert({
-        loan_id: params.id,
+        loan_id: id,
         client_id: body.client_id,
         payment_date: body.payment_date || new Date().toISOString().split("T")[0],
         receipt_number: body.receipt_number,
@@ -139,11 +141,11 @@ export async function POST(
         status: newStatus,
         workflow_status: newWorkflowStatus,
       })
-      .eq("id", params.id);
+      .eq("id", id);
 
     // Record repayment
     await supabase.from("repayments").insert({
-      loan_id: params.id,
+      loan_id: id,
       client_id: body.client_id,
       payment_date: body.payment_date || new Date().toISOString().split("T")[0],
       amount: totalAmount,

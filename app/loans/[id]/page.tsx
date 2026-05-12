@@ -64,7 +64,7 @@ export default function LoanDetailPage({ params }: { params: Promise<{ id: strin
       </button>
 
       {/* Loan Overview */}
-      <SectionCard style={{ marginBottom: 22 }}>
+      <SectionCard title="Loan Overview" style={{ marginBottom: 22 }}>
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "flex-start" }}>
           <div style={{ flex: 1, minWidth: 200 }}>
             <h2 style={{ marginBottom: 8 }}>{loan.clientName}</h2>

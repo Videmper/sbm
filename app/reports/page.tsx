@@ -7,7 +7,7 @@ import { StatCard } from "@/components/stat-card";
 import { formatCurrency } from "@/lib/format";
 import { getReportsSnapshot } from "@/lib/data";
 import type { ReportsSnapshot } from "@/lib/types";
-import { BarChart3, PieChart, TrendingUp, Users, DollarSign, Shield } from "lucide-react";
+import { BarChart3, PieChart, TrendingUp, Users, DollarSign, Shield, Wallet } from "lucide-react";
 
 export default function ReportsPage() {
   const [reports, setReports] = useState<ReportsSnapshot | null>(null);

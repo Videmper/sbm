@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
-import { createClient } from "@/lib/supabase";
+import { createSupabaseClient } from "@/lib/supabase";
 import { UserPlus, ArrowLeft } from "lucide-react";
 
 export default function RegisterPage() {
@@ -46,7 +46,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const supabase = createClient();
+      const supabase = createSupabaseClient();
       const { data, error: dbError } = await supabase
         .from("clients")
         .insert({

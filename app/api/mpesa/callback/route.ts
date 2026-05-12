@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient, isSupabaseConfigured } from "@/lib/supabase";
-import { verifyMpesaSignature } from "@/lib/mpesa-verify";
+import { verifyMpesaSignature } from "@/lib/mpesa";
 
 type CallbackItem = {
   Name?: string;
@@ -92,7 +92,7 @@ async function matchToLoan(
   }
 
   // Match to loan with closest balance
-  const bestMatch = loans.find((l) => Number(l.balance) === amount);
+const bestMatch = loans.find((l: any) => Number(l.balance) === amount);
   if (bestMatch) {
     return { loan_id: bestMatch.id, reason: "Exact balance match" };
   }
