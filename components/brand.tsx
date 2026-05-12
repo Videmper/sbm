@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export function Brand() {
   return (
-    <Link className="brand-mark" href="/">
+    <Link className="brand-mark" href="/dashboard">
       <div className="brand-logo-wrap">
         <Image
           src="/sauti_logo.png"

@@ -1,5 +1,4 @@
 import { formatCompactNumber, formatCurrency } from "@/lib/format";
-import { mockClients, mockDashboard, mockLoans, mockReports, mockSavings, mockSettings, mockSync, mockTransactions } from "@/lib/mock-data";
 import { createSupabaseAdminClient, isSupabaseConfigured } from "@/lib/supabase";
 import type {
   ClientRecord,
@@ -28,7 +27,23 @@ function normalizeClientName(firstName?: string | null, lastName?: string | null
 
 export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   if (!isSupabaseConfigured()) {
-    return mockDashboard;
+    return {
+      metrics: [
+        { label: "Clients on Book", value: "0", helper: "No Supabase connection", tone: "emerald" },
+        { label: "Live Portfolio", value: "KES 0", helper: "No data available", tone: "blue" },
+        { label: "Held Savings", value: "KES 0", helper: "No data available", tone: "amber" },
+        { label: "Watch List", value: "0", helper: "No data available", tone: "rose" },
+      ],
+      alerts: ["Configure Supabase credentials in .env to connect to the database."],
+      clients: [],
+      loans: [],
+      recentTransactions: [],
+      pendingActions: [
+        { label: "Configure Supabase", href: "/settings", icon: "Settings", badge: "Required" },
+        { label: "Add Database Schema", href: "/settings", icon: "ShieldCheck", badge: "Setup" },
+        { label: "Add M-PESA Credentials", href: "/settings", icon: "Wallet", badge: "Optional" },
+      ],
+    };
   }
 
   const supabase = createSupabaseAdminClient();
@@ -46,16 +61,14 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     supabase.from("loans").select("id, amount_approved, amount_requested, status", { count: "exact" }),
     supabase.from("loans").select("id", { count: "exact", head: true }).eq("status", "defaulted"),
     supabase.from("savings_ledger").select("amount, transaction_type"),
-    supabase.from("clients").select("id, member_no, first_name, last_name, phone, business_name, county, savings_only, created_at").limit(4),
-    supabase.from("loans").select("id, amount_approved, amount_requested, status, repayment_frequency, due_date, category, clients(first_name, last_name)").limit(4),
-    supabase.from("mpesa_transactions").select("id, amount, mpesa_receipt_number, transaction_date, payer_phone, result_desc").order("transaction_date", { ascending: false }).limit(4),
+    supabase.from("clients").select("id, member_no, first_name, last_name, phone, business_name, county, savings_only, created_at").limit(5),
+    supabase.from("loans").select("id, amount_approved, amount_requested, status, repayment_frequency, due_date, category, clients(first_name, last_name)").limit(5),
+    supabase.from("mpesa_transactions").select("id, amount, mpesa_receipt_number, transaction_date, payer_phone, result_desc").order("created_at", { ascending: false }).limit(5),
   ]);
 
   const activePortfolio = (activeLoansResult.data ?? []).reduce((sum, loan) => {
     const status = String(loan.status ?? "");
-    if (!["active", "approved"].includes(status)) {
-      return sum;
-    }
+    if (!["active", "approved"].includes(status)) return sum;
     return sum + Number(loan.amount_approved ?? loan.amount_requested ?? 0);
   }, 0);
 
@@ -74,14 +87,16 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     status: "active",
     savingsOnly: Boolean(client.savings_only),
     joinedAt: String(client.created_at ?? new Date().toISOString()),
+    loanOfficerId: undefined,
+    fieldOfficerId: undefined,
   }));
 
   const loans: LoanRecord[] = (loansResult.data ?? []).map((loan) => ({
     id: String(loan.id),
     clientId: "",
     clientName: normalizeClientName(
-      (loan.clients as { first_name?: string | null } | null)?.first_name,
-      (loan.clients as { last_name?: string | null } | null)?.last_name,
+      (loan.clients as { first_name?: string | null })?.first_name,
+      (loan.clients as { last_name?: string | null })?.last_name,
     ),
     category: String(loan.category ?? "Other"),
     principal: Number(loan.amount_approved ?? loan.amount_requested ?? 0),
@@ -89,7 +104,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     status: (loan.status ?? "pending") as LoanRecord["status"],
     repaymentFrequency: (loan.repayment_frequency ?? "weekly") as LoanRecord["repaymentFrequency"],
     repaymentPlan: (loan.repayment_frequency ?? "weekly") as LoanRecord["repaymentPlan"],
-    dueDate: String(loan.due_date ?? new Date().toISOString()),
+    dueDate: String(loan.due_date ?? ""),
     termWeeks: 12,
     loanPeriodDays: 30,
     interestRate: 0,
@@ -114,48 +129,33 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     id: String(row.id),
     source: "mpesa",
     clientName: String(row.payer_phone ?? "M-PESA payer"),
+    clientId: undefined,
     amount: Number(row.amount ?? 0),
     method: "M-PESA",
     reference: String(row.mpesa_receipt_number ?? "N/A"),
     recordedAt: String(row.transaction_date ?? new Date().toISOString()),
     notes: String(row.result_desc ?? "Callback captured"),
+    type: "deposit",
   }));
+
+  let pendingActions: DashboardAction[] = [];
 
   return {
     metrics: [
-      {
-        label: "Clients on Book",
-        value: formatCompactNumber(clientsCountResult.count ?? 0),
-        helper: "Members ready for modern operations",
-        tone: "emerald",
-      },
-      {
-        label: "Live Portfolio",
-        value: formatCurrency(activePortfolio),
-        helper: "Approved and active loans",
-        tone: "blue",
-      },
-      {
-        label: "Held Savings",
-        value: formatCurrency(heldSavings),
-        helper: "Current savings ledger net balance",
-        tone: "amber",
-      },
-      {
-        label: "Watch List",
-        value: String(overdueLoansResult.count ?? 0),
-        helper: "Defaulted cases requiring action",
-        tone: "rose",
-      },
+      { label: "Clients on Book", value: formatCompactNumber(clientsCountResult.count ?? 0), helper: "Members in the system", tone: "emerald" },
+      { label: "Live Portfolio", value: formatCurrency(activePortfolio), helper: "Active and approved loans", tone: "blue" },
+      { label: "Held Savings", value: formatCurrency(heldSavings), helper: "Net savings balance", tone: "amber" },
+      { label: "Watch List", value: String(overdueLoansResult.count ?? 0), helper: "Defaulted cases requiring action", tone: "rose" },
     ],
     alerts: [
       "Connected to Supabase with live counts.",
-      "M-PESA callbacks will appear here once Daraja credentials are configured.",
-      "Legacy sync remains available for phased migration.",
+      "M-PESA callbacks will appear once Daraja credentials are configured.",
+      "Database schema is ready. Run fullupdate.sql if tables are missing.",
     ],
-    clients: clients.length > 0 ? clients : mockClients,
-    loans: loans.length > 0 ? loans : mockLoans,
-    recentTransactions: recentTransactions.length > 0 ? recentTransactions : mockTransactions,
+    clients,
+    loans,
+    recentTransactions,
+    pendingActions,
   };
 }
 
@@ -170,27 +170,18 @@ export async function getClientsSnapshot(params?: GetClientsParams): Promise<Pag
   const searchQuery = params?.query?.trim() ?? "";
 
   if (!isSupabaseConfigured()) {
-    let data = mockClients;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      data = mockClients.filter(
-        (c) =>
-          c.fullName.toLowerCase().includes(q) ||
-          c.memberNo.toLowerCase().includes(q) ||
-          c.phone.toLowerCase().includes(q)
-      );
-    }
-    const total = data.length;
-    const paged = data.slice(offset, offset + limit);
-    return { data: paged, total, page, limit, totalPages: Math.ceil(total / limit), hasNext: page < Math.ceil(total / limit), hasPrev: page > 1 };
+    return { data: [], total: 0, page, limit, totalPages: 1, hasNext: false, hasPrev: false };
   }
 
   const supabase = createSupabaseAdminClient();
 
-// Build query
   let query = supabase
     .from("clients")
-    .select("id, member_no, first_name, last_name, phone, business_name, county, savings_only, created_at", { count: "exact" });
+    .select("id, member_no, first_name, last_name, phone, business_name, county, savings_only, loan_officer_id, field_officer_id, created_at", { count: "exact" });
+
+  if (params?.status) {
+    query = query.eq("status", params.status);
+  }
 
   if (searchQuery) {
     query = query.or(`full_name.ilike.%${searchQuery}%,member_no.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`);
@@ -202,19 +193,7 @@ export async function getClientsSnapshot(params?: GetClientsParams): Promise<Pag
 
   if (error) {
     console.error("getClientsSnapshot error:", error);
-    let fallback = mockClients;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      fallback = mockClients.filter(
-        (c) =>
-          c.fullName.toLowerCase().includes(q) ||
-          c.memberNo.toLowerCase().includes(q) ||
-          c.phone.toLowerCase().includes(q)
-      );
-    }
-    const total = fallback.length;
-    const paged = fallback.slice(offset, offset + limit);
-    return { data: paged, total, page, limit, totalPages: Math.ceil(total / limit), hasNext: page < Math.ceil(total / limit), hasPrev: page > 1 };
+    return { data: [], total: 0, page, limit, totalPages: 1, hasNext: false, hasPrev: false };
   }
 
   const total = totalCount ?? 0;
@@ -225,9 +204,11 @@ export async function getClientsSnapshot(params?: GetClientsParams): Promise<Pag
     phone: String(client.phone ?? "N/A"),
     businessName: String(client.business_name ?? "No business name"),
     county: String(client.county ?? "Unassigned"),
-    status: "active",
+    status: String(client.savings_only ? "active" : "active") as any,
     savingsOnly: Boolean(client.savings_only),
     joinedAt: String(client.created_at ?? new Date().toISOString()),
+    loanOfficerId: client.loan_officer_id ? String(client.loan_officer_id) : undefined,
+    fieldOfficerId: client.field_officer_id ? String(client.field_officer_id) : undefined,
   }));
 
   return {
@@ -246,21 +227,16 @@ export async function getClientsSnapshot(params?: GetClientsParams): Promise<Pag
 // ============================================================
 
 export async function getClientById(clientId: string): Promise<ClientRecord | null> {
-  if (!isSupabaseConfigured()) {
-    return mockClients.find((c) => c.id === clientId) ?? null;
-  }
+  if (!isSupabaseConfigured()) return null;
 
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("clients")
-    .select("id, member_no, first_name, last_name, phone, business_name, county, savings_only, created_at")
+    .select("id, member_no, first_name, last_name, phone, alt_phone, email, business_name, business_type, business_location, county, sub_county, ward, town, village, address, marital_status, id_number, dob, gender, nickname, savings_only, loan_officer_id, field_officer_id, home_ownership, created_at")
     .eq("id", clientId)
     .single();
 
-  if (error || !data) {
-    console.error("getClientById error:", error);
-    return mockClients.find((c) => c.id === clientId) ?? null;
-  }
+  if (error || !data) return null;
 
   return {
     id: String(data.id),
@@ -272,6 +248,16 @@ export async function getClientById(clientId: string): Promise<ClientRecord | nu
     status: "active",
     savingsOnly: Boolean(data.savings_only),
     joinedAt: String(data.created_at ?? new Date().toISOString()),
+    nickname: data.nickname,
+    altPhone: data.alt_phone,
+    email: data.email,
+    businessType: data.business_type,
+    maritalStatus: data.marital_status,
+    idNumber: data.id_number,
+    dob: data.dob ? String(data.dob) : undefined,
+    gender: data.gender as any,
+    loanOfficerId: data.loan_officer_id ? String(data.loan_officer_id) : undefined,
+    fieldOfficerId: data.field_officer_id ? String(data.field_officer_id) : undefined,
   };
 }
 
@@ -289,39 +275,22 @@ export async function getLoansSnapshot(params?: GetLoansParams): Promise<PagedRe
   const clientIdFilter = params?.clientId;
 
   if (!isSupabaseConfigured()) {
-    let data = mockLoans;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      data = mockLoans.filter(
-        (l) =>
-          l.clientName.toLowerCase().includes(q) ||
-          l.category.toLowerCase().includes(q)
-      );
-    }
-    if (statusFilter) {
-      data = data.filter((l) => l.status === statusFilter);
-    }
-    if (categoryFilter) {
-      data = data.filter((l) => l.category === categoryFilter);
-    }
-    const total = data.length;
-    const paged = data.slice(offset, offset + limit);
-    return { data: paged, total, page, limit, totalPages: Math.ceil(total / limit), hasNext: page < Math.ceil(total / limit), hasPrev: page > 1 };
+    return { data: [], total: 0, page, limit, totalPages: 1, hasNext: false, hasPrev: false };
   }
 
   const supabase = createSupabaseAdminClient();
 
   let query = supabase
     .from("loans")
-    .select("id, client_id, amount_approved, amount_requested, status, repayment_frequency, repayment_plan, due_date, category, term_weeks, loan_period_days, interest_rate, interest_amount, processing_fee, insurance_fee, penalty_rate, total_deductions, total_repayment, net_disbursed, funds_transfer_fee, daily_contribution, savings_amount, collateral_joint_registration_fee, unpaid_shares, unpaid_savings, workflow_status, clients(first_name, last_name)", { count: "exact" });
+    .select("id, client_id, amount_approved, amount_requested, status, repayment_frequency, repayment_plan, due_date, category, term_weeks, loan_period_days, interest_rate, interest_amount, processing_fee, insurance_fee, penalty_rate, total_deductions, total_repayment, net_disbursed, funds_transfer_fee, daily_contribution, savings_amount, collateral_joint_registration_fee, unpaid_shares, unpaid_savings, workflow_status, approved_at, clients(first_name, last_name)", { count: "exact" });
 
-  if (statusFilter) {
+  if (statusFilter && statusFilter !== "All") {
     query = query.eq("status", statusFilter);
   }
-  if (categoryFilter) {
+  if (categoryFilter && categoryFilter !== "All") {
     query = query.eq("category", categoryFilter);
   }
-if (clientIdFilter) {
+  if (clientIdFilter) {
     query = query.eq("client_id", clientIdFilter);
   }
   if (searchQuery) {
@@ -334,29 +303,13 @@ if (clientIdFilter) {
 
   if (error) {
     console.error("getLoansSnapshot error:", error);
-    let fallback = mockLoans;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      fallback = mockLoans.filter(
-        (l) =>
-          l.clientName.toLowerCase().includes(q) ||
-          l.category.toLowerCase().includes(q)
-      );
-    }
-    if (statusFilter) {
-      fallback = fallback.filter((l) => l.status === statusFilter);
-    }
-    const total = fallback.length;
-    const paged = fallback.slice(offset, offset + limit);
-    return { data: paged, total, page, limit, totalPages: Math.ceil(total / limit), hasNext: page < Math.ceil(total / limit), hasPrev: page > 1 };
+    return { data: [], total: 0, page, limit, totalPages: 1, hasNext: false, hasPrev: false };
   }
 
   const total = totalCount ?? 0;
   const loans: LoanRecord[] = await Promise.all(
     (allData ?? []).map(async (loan) => {
       const principal = Number(loan.amount_approved ?? loan.amount_requested ?? 0);
-
-      // Fetch actual payment breakdowns to compute balance = principal - sum(loan_amount)
       let balance = principal;
       const breakdowns: PaymentBreakdownRecord[] = [];
 
@@ -391,8 +344,8 @@ if (clientIdFilter) {
         id: String(loan.id),
         clientId: String(loan.client_id ?? ""),
         clientName: normalizeClientName(
-          (loan.clients as { first_name?: string | null } | null)?.first_name,
-          (loan.clients as { last_name?: string | null } | null)?.last_name,
+          (loan.clients as { first_name?: string | null })?.first_name,
+          (loan.clients as { last_name?: string | null })?.last_name,
         ),
         category: String(loan.category ?? "Other"),
         principal,
@@ -400,7 +353,7 @@ if (clientIdFilter) {
         status: (loan.status ?? "pending") as LoanRecord["status"],
         repaymentFrequency: (loan.repayment_frequency ?? "weekly") as LoanRecord["repaymentFrequency"],
         repaymentPlan: (loan.repayment_plan ?? "weekly") as LoanRecord["repaymentPlan"],
-        dueDate: String(loan.due_date ?? new Date().toISOString()),
+        dueDate: String(loan.due_date ?? ""),
         termWeeks: Number(loan.term_weeks ?? 12),
         loanPeriodDays: Number(loan.loan_period_days ?? 30),
         interestRate: Number(loan.interest_rate ?? 0),
@@ -418,6 +371,7 @@ if (clientIdFilter) {
         unpaidShares: Number(loan.unpaid_shares ?? 0),
         unpaidSavings: Number(loan.unpaid_savings ?? 0),
         workflowStatus: (loan.workflow_status ?? "to_be_visited") as LoanRecord["workflowStatus"],
+        approvedAt: loan.approved_at ? String(loan.approved_at) : undefined,
         paymentBreakdowns: breakdowns,
       };
     })
@@ -439,25 +393,18 @@ if (clientIdFilter) {
 // ============================================================
 
 export async function getLoanById(loanId: string): Promise<LoanRecord | null> {
-  if (!isSupabaseConfigured()) {
-    return mockLoans.find((l) => l.id === loanId) ?? null;
-  }
+  if (!isSupabaseConfigured()) return null;
 
   const supabase = createSupabaseAdminClient();
   const { data: loan, error } = await supabase
     .from("loans")
-    .select("id, client_id, amount_approved, amount_requested, status, repayment_frequency, repayment_plan, due_date, category, term_weeks, loan_period_days, interest_rate, interest_amount, processing_fee, insurance_fee, penalty_rate, total_deductions, total_repayment, net_disbursed, funds_transfer_fee, daily_contribution, savings_amount, collateral_joint_registration_fee, unpaid_shares, unpaid_savings, workflow_status")
+    .select("id, client_id, amount_approved, amount_requested, status, repayment_frequency, repayment_plan, due_date, category, term_weeks, loan_period_days, interest_rate, interest_amount, processing_fee, insurance_fee, penalty_rate, total_deductions, total_repayment, net_disbursed, funds_transfer_fee, daily_contribution, savings_amount, collateral_joint_registration_fee, unpaid_shares, unpaid_savings, workflow_status, approved_at")
     .eq("id", loanId)
     .single();
 
-  if (error || !loan) {
-    console.error("getLoanById error:", error);
-    return mockLoans.find((l) => l.id === loanId) ?? null;
-  }
+  if (error || !loan) return null;
 
   const principal = Number(loan.amount_approved ?? loan.amount_requested ?? 0);
-
-  // Compute balance from payment breakdowns
   let balance = principal;
   const breakdowns: PaymentBreakdownRecord[] = [];
 
@@ -486,7 +433,6 @@ export async function getLoanById(loanId: string): Promise<LoanRecord | null> {
     })));
   }
 
-  // Fetch client name
   let clientName = "Unknown";
   if (loan.client_id) {
     const clientResult = await supabase
@@ -509,7 +455,7 @@ export async function getLoanById(loanId: string): Promise<LoanRecord | null> {
     status: (loan.status ?? "pending") as LoanRecord["status"],
     repaymentFrequency: (loan.repayment_frequency ?? "weekly") as LoanRecord["repaymentFrequency"],
     repaymentPlan: (loan.repayment_plan ?? "weekly") as LoanRecord["repaymentPlan"],
-    dueDate: String(loan.due_date ?? new Date().toISOString()),
+    dueDate: String(loan.due_date ?? ""),
     termWeeks: Number(loan.term_weeks ?? 12),
     loanPeriodDays: Number(loan.loan_period_days ?? 30),
     interestRate: Number(loan.interest_rate ?? 0),
@@ -527,8 +473,46 @@ export async function getLoanById(loanId: string): Promise<LoanRecord | null> {
     unpaidShares: Number(loan.unpaid_shares ?? 0),
     unpaidSavings: Number(loan.unpaid_savings ?? 0),
     workflowStatus: (loan.workflow_status ?? "to_be_visited") as LoanRecord["workflowStatus"],
+    approvedAt: loan.approved_at ? String(loan.approved_at) : undefined,
     paymentBreakdowns: breakdowns,
   };
+}
+
+// ============================================================
+// Create Loan
+// ============================================================
+
+export async function createLoan(application: {
+  client_id: string;
+  category: string;
+  amount_requested: number;
+  purpose: string;
+  term_weeks: number;
+  repayment_frequency: string;
+  interest_rate: number;
+  processing_fee: number;
+  insurance_fee: number;
+}): Promise<LoanRecord | null> {
+  if (!isSupabaseConfigured()) return null;
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("loans")
+    .insert({
+      ...application,
+      status: "pending",
+      workflow_status: "to_be_visited",
+      balance: 0,
+      total_repayment: 0,
+      net_disbursed: 0,
+      total_deductions: application.processing_fee + application.insurance_fee,
+    })
+    .select()
+    .single();
+
+  if (error || !data) return null;
+
+  return await getLoanById(String(data.id));
 }
 
 // ============================================================
@@ -542,19 +526,11 @@ export async function getSavingsSnapshot(params?: GetSavingsParams): Promise<Pag
   const searchQuery = params?.searchQuery?.trim() ?? "";
 
   if (!isSupabaseConfigured()) {
-    let data = mockSavings;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      data = mockSavings.filter((s) => s.clientName.toLowerCase().includes(q));
-    }
-    const total = data.length;
-    const paged = data.slice(offset, offset + limit);
-    return { data: paged, total, page, limit, totalPages: Math.ceil(total / limit), hasNext: page < Math.ceil(total / limit), hasPrev: page > 1 };
+    return { data: [], total: 0, page, limit, totalPages: 1, hasNext: false, hasPrev: false };
   }
 
   const supabase = createSupabaseAdminClient();
 
-// Use the member_portfolio_balances view for savings data
   let query = supabase
     .from("member_portfolio_balances")
     .select("client_id, member_no, full_name, mandatory_savings, mandatory_shares, multiplier_balance, withdrawable_balance", { count: "exact" });
@@ -569,27 +545,27 @@ export async function getSavingsSnapshot(params?: GetSavingsParams): Promise<Pag
 
   if (error) {
     console.error("getSavingsSnapshot error:", error);
-    let fallback = mockSavings;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      fallback = mockSavings.filter((s) => s.clientName.toLowerCase().includes(q));
-    }
-    const total = fallback.length;
-    const paged = fallback.slice(offset, offset + limit);
-    return { data: paged, total, page, limit, totalPages: Math.ceil(total / limit), hasNext: page < Math.ceil(total / limit), hasPrev: page > 1 };
+    return { data: [], total: 0, page, limit, totalPages: 1, hasNext: false, hasPrev: false };
   }
 
   const total = totalCount ?? 0;
-  const savings: SavingsRecord[] = (allData ?? []).map((row) => ({
-    id: String(row.client_id ?? row.member_no ?? crypto.randomUUID()),
-    clientId: String(row.client_id ?? ""),
-    clientName: String(row.full_name ?? "Unknown"),
-    mandatory: Number(row.mandatory_savings ?? 0),
-    mandatoryShares: Number(row.mandatory_shares ?? 0),
-    multiplier: Number(row.multiplier_balance ?? 0),
-    withdrawable: Number(row.withdrawable_balance ?? 0),
-    updatedAt: new Date().toISOString(),
-  }));
+  const savings: SavingsRecord[] = (allData ?? []).map((row) => {
+    const mandatory = Number(row.mandatory_savings ?? 0);
+    const mandatoryShares = Number(row.mandatory_shares ?? 0);
+    const multiplier = Number(row.multiplier_balance ?? 0);
+    const withdrawable = Number(row.withdrawable_balance ?? 0);
+    return {
+      id: String(row.client_id ?? row.member_no ?? crypto.randomUUID()),
+      clientId: String(row.client_id ?? ""),
+      clientName: String(row.full_name ?? "Unknown"),
+      mandatory,
+      mandatoryShares,
+      multiplier,
+      withdrawable,
+      total: mandatory + mandatoryShares + multiplier + withdrawable,
+      updatedAt: new Date().toISOString(),
+    };
+  });
 
   return {
     data: savings,
@@ -603,6 +579,32 @@ export async function getSavingsSnapshot(params?: GetSavingsParams): Promise<Pag
 }
 
 // ============================================================
+// Savings Contribution
+// ============================================================
+
+export async function recordSavingsContribution(contribution: {
+  client_id: string;
+  amount: number;
+  savings_bucket: string;
+  notes?: string;
+}): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase.from("savings_ledger").insert({
+    client_id: contribution.client_id,
+    amount: contribution.amount,
+    savings_bucket: contribution.savings_bucket,
+    transaction_type: "deposit",
+    transaction_date: new Date().toISOString().split("T")[0],
+    source_channel: "manual",
+    notes: contribution.notes,
+  });
+
+  return !error;
+}
+
+// ============================================================
 // Transactions
 // ============================================================
 
@@ -613,48 +615,27 @@ export async function getTransactionsSnapshot(params?: GetTransactionsParams): P
   const searchQuery = params?.query?.trim() ?? "";
 
   if (!isSupabaseConfigured()) {
-    let data = mockTransactions;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      data = mockTransactions.filter(
-        (t) =>
-          t.clientName.toLowerCase().includes(q) ||
-          t.reference.toLowerCase().includes(q)
-      );
-    }
-    const total = data.length;
-    const paged = data.slice(offset, offset + limit);
-    return { data: paged, total, page, limit, totalPages: Math.ceil(total / limit), hasNext: page < Math.ceil(total / limit), hasPrev: page > 1 };
+    return { data: [], total: 0, page, limit, totalPages: 1, hasNext: false, hasPrev: false };
   }
 
   const supabase = createSupabaseAdminClient();
 
-let query = supabase
+  // Unified query: get M-PESA transactions and savings ledger entries combined via separate queries
+  let query = supabase
     .from("mpesa_transactions")
-    .select("id, amount, mpesa_receipt_number, transaction_date, payer_phone, result_desc, status", { count: "exact" });
+    .select("id, amount, mpesa_receipt_number, transaction_date, payer_phone, result_desc, status, matched_client_id", { count: "exact" });
 
   if (searchQuery) {
     query = query.or(`mpesa_receipt_number.ilike.%${searchQuery}%,payer_phone.ilike.%${searchQuery}%`);
   }
 
   const { data: allData, count: totalCount, error } = await query
-    .order("transaction_date", { ascending: false })
+    .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
   if (error) {
     console.error("getTransactionsSnapshot error:", error);
-    let fallback = mockTransactions;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      fallback = mockTransactions.filter(
-        (t) =>
-          t.clientName.toLowerCase().includes(q) ||
-          t.reference.toLowerCase().includes(q)
-      );
-    }
-    const total = fallback.length;
-    const paged = fallback.slice(offset, offset + limit);
-    return { data: paged, total, page, limit, totalPages: Math.ceil(total / limit), hasNext: page < Math.ceil(total / limit), hasPrev: page > 1 };
+    return { data: [], total: 0, page, limit, totalPages: 1, hasNext: false, hasPrev: false };
   }
 
   const total = totalCount ?? 0;
@@ -662,11 +643,13 @@ let query = supabase
     id: String(row.id),
     source: "mpesa",
     clientName: String(row.payer_phone ?? "M-PESA payer"),
+    clientId: row.matched_client_id ? String(row.matched_client_id) : undefined,
     amount: Number(row.amount ?? 0),
     method: "M-PESA",
     reference: String(row.mpesa_receipt_number ?? "N/A"),
     recordedAt: String(row.transaction_date ?? new Date().toISOString()),
     notes: String(row.result_desc ?? "Captured from callback"),
+    type: row.status === "success" ? "deposit" : "reversal",
   }));
 
   return {
@@ -686,22 +669,43 @@ let query = supabase
 
 export async function getReportsSnapshot(): Promise<ReportsSnapshot> {
   if (!isSupabaseConfigured()) {
-    return mockReports;
+    return {
+      activePortfolio: 0,
+      memberSavings: 0,
+      purposePool: 0,
+      collectionToday: 0,
+      totalDisbursed: 0,
+      totalRepaid: 0,
+      loanBreakdown: { active: 0, approved: 0, pending: 0, defaulted: 0, completed: 0, rejected: 0 },
+      savingsBreakdown: { mandatory: 0, shares: 0, multiplier: 0, withdrawable: 0 },
+      topClients: [],
+    };
   }
 
   const supabase = createSupabaseAdminClient();
+  const today = new Date().toISOString().split("T")[0];
 
-  // Active portfolio: sum of amount_approved for active/approved loans
-const portfolioResult = await supabase
+  // Active portfolio
+  const portfolioResult = await supabase
     .from("loans")
     .select("amount_approved, amount_requested, status, client_id", { count: "exact", head: false });
-
   const allLoans = portfolioResult.data ?? [];
   const activePortfolio = allLoans
     .filter((l) => ["active", "approved"].includes(String(l.status ?? "")))
     .reduce((sum, l) => sum + Number(l.amount_approved ?? l.amount_requested ?? 0), 0);
 
-  // Savings breakdown from member_portfolio_balances view
+  // Total disbursed
+  const totalDisbursed = allLoans
+    .filter((l) => ["active", "approved", "completed"].includes(String(l.status ?? "")))
+    .reduce((sum, l) => sum + Number(l.amount_approved ?? 0), 0);
+
+  // Total repaid (from payment breakdowns)
+  const repaidResult = await supabase
+    .from("loan_payment_breakdowns")
+    .select("loan_amount", { count: "exact", head: false });
+  const totalRepaid = (repaidResult.data ?? []).reduce((sum, p) => sum + Number(p.loan_amount ?? 0), 0);
+
+  // Savings
   const savingsResult = await supabase.from("member_portfolio_balances").select("mandatory_savings, mandatory_shares, multiplier_balance, withdrawable_balance");
   const savingsRows = savingsResult.data ?? [];
   const totalMandatory = savingsRows.reduce((sum, r) => sum + Number(r.mandatory_savings ?? 0), 0);
@@ -710,18 +714,18 @@ const portfolioResult = await supabase
   const totalWithdrawable = savingsRows.reduce((sum, r) => sum + Number(r.withdrawable_balance ?? 0), 0);
   const memberSavings = totalMandatory + totalShares + totalMultiplier + totalWithdrawable;
 
-  // Purpose pool: sum of all purpose_pool_allocations
+  // Purpose pool
   const purposePoolResult = await supabase
     .from("purpose_pool_allocations")
     .select("amount", { count: "exact", head: false });
   const purposePool = (purposePoolResult.data ?? []).reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
 
   // Collections today
-  const today = new Date().toISOString().split("T")[0];
   const collectionsResult = await supabase
     .from("mpesa_transactions")
     .select("amount", { count: "exact", head: false })
-    .gte("transaction_date", today);
+    .gte("transaction_date", today)
+    .eq("status", "success");
   const collectionToday = (collectionsResult.data ?? []).reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
 
   // Loan status breakdown
@@ -731,11 +735,10 @@ const portfolioResult = await supabase
     statusCounts[s] = (statusCounts[s] ?? 0) + 1;
   }
 
-// Top clients by loan amount - use client_id to fetch names separately
+  // Top clients by loan amount
   let top5: { name: string; totalLoans: number; outstanding: number }[] = [];
-
   if (allLoans.length > 0) {
-    const uniqueClientIds = [...new Set(allLoans.map(l => l.client_id).filter(Boolean))];
+    const uniqueClientIds = [...new Set(allLoans.map((l) => l.client_id).filter(Boolean))];
     const clientNamesResult = await supabase
       .from("clients")
       .select("id, first_name, last_name")
@@ -774,12 +777,15 @@ const portfolioResult = await supabase
     memberSavings,
     purposePool,
     collectionToday,
+    totalDisbursed,
+    totalRepaid,
     loanBreakdown: {
       active: statusCounts["active"] ?? 0,
       approved: statusCounts["approved"] ?? 0,
       pending: statusCounts["pending"] ?? 0,
       defaulted: statusCounts["defaulted"] ?? 0,
       completed: statusCounts["completed"] ?? 0,
+      rejected: statusCounts["rejected"] ?? 0,
     },
     savingsBreakdown: {
       mandatory: totalMandatory,
@@ -797,7 +803,12 @@ const portfolioResult = await supabase
 
 export async function getSyncSnapshot(): Promise<SyncSnapshot> {
   if (!isSupabaseConfigured()) {
-    return mockSync;
+    return {
+      lastSyncLabel: "Not configured",
+      pendingCallbacks: 0,
+      processedCallbacks: 0,
+      runs: [],
+    };
   }
 
   const supabase = createSupabaseAdminClient();
@@ -821,7 +832,7 @@ export async function getSyncSnapshot(): Promise<SyncSnapshot> {
         startedAt: String(run.started_at ?? new Date().toISOString()),
         finishedAt: run.finished_at ? String(run.finished_at) : null,
         details: String(run.details ?? ""),
-      })) ?? mockSync.runs,
+      })) ?? [],
   };
 }
 
@@ -831,7 +842,8 @@ export async function getSyncSnapshot(): Promise<SyncSnapshot> {
 
 export async function getSettingsSnapshot(): Promise<SettingsSnapshot> {
   return {
-    ...mockSettings,
+    appName: "Sauti Business Community",
+    deploymentMode: "Production-ready Next.js 16 + React 19 + Supabase",
     supabaseReady: isSupabaseConfigured(),
     mpesaReady: Boolean(
       process.env.MPESA_CONSUMER_KEY &&
@@ -839,5 +851,12 @@ export async function getSettingsSnapshot(): Promise<SettingsSnapshot> {
         process.env.MPESA_SHORTCODE &&
         process.env.MPESA_PASSKEY
     ),
+    dbSchemaReady: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+    nextSteps: [
+      "Paste database/fullupdate.sql into the Supabase SQL editor.",
+      "Add Supabase project keys into .env file.",
+      "Configure Daraja API credentials for M-PESA callbacks.",
+      "Invite team members and assign roles in the profiles table.",
+    ],
   };
 }

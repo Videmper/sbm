@@ -1,60 +1,89 @@
 import type { ReactNode } from "react";
 import { Brand } from "@/components/brand";
 import { NavLink } from "@/components/nav-link";
-import { navItems } from "@/lib/navigation";
+import { getNavItemsForRole } from "@/lib/navigation";
+import type { SessionUser } from "@/lib/types";
 
-type Props = {
+interface Props {
   children: ReactNode;
   title: string;
-  description: string;
+  description?: string;
   badge?: string;
   currentPath: string;
-};
+  user?: SessionUser | null;
+}
 
-export function AppShell({
-  children,
-  title,
-  description,
-  badge,
-  currentPath,
-}: Props) {
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+export function AppShell({ children, title, description, badge, currentPath, user }: Props) {
+  const isAuthPage = currentPath === "/login" || currentPath === "/";
+  const navItems = getNavItemsForRole(user?.role ?? "savings_member");
+
   return (
     <div className="shell">
-      <aside className="sidebar">
-        <Brand />
-        <div className="sidebar-panel">
-          <p className="sidebar-caption">Operations</p>
-          <nav className="nav-stack">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.href}
-                href={item.href}
-                icon={item.icon}
-                isActive={currentPath === item.href}
-                label={item.label}
-              />
-            ))}
-          </nav>
-        </div>
-        <div className="sidebar-note">
-          <p>Modern rollout track</p>
-          <strong>Next.js frontend with Supabase-ready finance tables.</strong>
-        </div>
-      </aside>
+      {!isAuthPage && (
+        <aside className="sidebar">
+          <div className="sidebar-brand">
+            <Brand />
+          </div>
+
+          {user && (
+            <div className="sidebar-user">
+              <div className="user-avatar">{getInitials(user.fullName)}</div>
+              <div className="user-info">
+                <strong className="user-name">{user.fullName}</strong>
+                <span className="user-role">{user.role.replace(/_/g, " ")}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="sidebar-panel">
+            <p className="sidebar-caption">Operations</p>
+            <nav className="nav-stack">
+              {navItems.map((item: any) => (
+                <NavLink
+                  key={item.href}
+                  href={item.href as any}
+                  icon={item.icon}
+                  isActive={currentPath === item.href}
+                  label={item.label}
+                />
+              ))}
+            </nav>
+          </div>
+
+          <div className="sidebar-footer">
+            <NavLink href="/settings" icon={() => <></>} label="Settings" isActive={currentPath === "/settings"} />
+          </div>
+        </aside>
+      )}
 
       <main className="main-panel">
-        <header className="page-header">
-          <div>
-            {badge ? <span className="page-badge">{badge}</span> : null}
-            <h1>{title}</h1>
-            <p>{description}</p>
-          </div>
-          <div className="page-header-card">
-            <span>Migration Mode</span>
-            <strong>Parallel run with PHP preserved</strong>
-          </div>
-        </header>
-        {children}
+        {!isAuthPage && (
+          <header className="page-header">
+            <div>
+              {badge ? <span className="page-badge">{badge}</span> : null}
+              <h1>{title}</h1>
+              {description ? <p>{description}</p> : null}
+            </div>
+            {user && (
+              <div className="page-header-card">
+                <span>Signed in as</span>
+                <strong>{user.fullName}</strong>
+                <span className="table-muted">{user.role.replace(/_/g, " ")}</span>
+              </div>
+            )}
+          </header>
+        )}
+
+        <div className="page-content">{children}</div>
       </main>
     </div>
   );

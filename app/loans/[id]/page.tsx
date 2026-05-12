@@ -1,217 +1,225 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/section-card";
 import { StatCard } from "@/components/stat-card";
-import { EmptyState } from "@/components/empty-state";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
-import { getLoanById, getLoansSnapshot } from "@/lib/data";
+import { getLoanById, getClientsSnapshot } from "@/lib/data";
+import { ArrowLeft, AlertTriangle, CheckCircle, Clock, DollarSign, Percent, Calendar } from "lucide-react";
 import type { LoanRecord, PaymentBreakdownRecord } from "@/lib/types";
 
-function ProgressBar({ paid, total }: { paid: number; total: number }) {
-  const pct = total > 0 ? Math.min((paid / total) * 100, 100) : 0;
-  return (
-    <div style={{ width: "100%", height: 10, background: "rgba(255,255,255,0.08)", borderRadius: 999, overflow: "hidden" }}>
-      <div
-        style={{
-          width: `${pct}%`,
-          height: "100%",
-          background: paid >= total ? "linear-gradient(90deg, #18b27e, #3ed7b0)" : "linear-gradient(90deg, #4ba3ff, #7ab8ff)",
-          borderRadius: 999,
-          transition: "width 0.5s ease",
-        }}
-      />
-    </div>
-  );
-}
-
-export default function LoanDetailPage() {
-  const params = useParams();
+export default function LoanDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
-  const loanId = String(params.id);
-
   const [loan, setLoan] = useState<LoanRecord | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("overview");
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
     (async () => {
-      try {
-        const data = await getLoanById(loanId);
-        if (!cancelled) {
-          setLoan(data);
-          if (!data) setError("Loan not found");
-        }
-      } catch (err: any) {
-        if (!cancelled) {
-          setError(err.message ?? "Failed to load loan");
-          setLoan(null);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+      const resolved = await params;
+      const { id } = resolved;
+      if (!id) {
+        router.push("/loans");
+        return;
       }
+      const data = await getLoanById(id);
+      setLoan(data);
+      setLoading(false);
     })();
-    return () => { cancelled = true; };
-  }, [loanId]);
+  }, [params, router]);
 
   if (loading) {
     return (
-      <AppShell title="Loan Detail" description="Loading..." badge="Loan" currentPath="/loans">
-        <div style={{ textAlign: "center", padding: 60, color: "var(--muted)" }}>Loading loan…</div>
+      <AppShell title="Loan" currentPath="/loans">
+        <div style={{ textAlign: "center", padding: 60, color: "var(--text-muted)" }}>Loading loan details…</div>
       </AppShell>
     );
   }
 
-  if (error || !loan) {
+  if (!loan) {
     return (
-      <AppShell title="Loan Detail" description={error ?? "Not found"} badge="Loan" currentPath="/loans">
-        <SectionCard title="Error">
-          <p className="table-muted">{error ?? "Loan not found."}</p>
-          <button
-            className="btn-secondary"
-            onClick={() => router.push("/loans")}
-            style={{ marginTop: 16, minHeight: 38, padding: "0 16px", borderRadius: 10, cursor: "pointer" }}
-          >
-            Back to Loans
-          </button>
-        </SectionCard>
+      <AppShell title="Loan" currentPath="/loans">
+        <div style={{ textAlign: "center", padding: 60 }}>
+          <p style={{ color: "var(--text-muted)", marginBottom: 16 }}>Loan not found.</p>
+          <button className="btn-secondary" onClick={() => router.push("/loans")}>Back to Loans</button>
+        </div>
       </AppShell>
     );
   }
 
   const totalPaid = loan.paymentBreakdowns.reduce((sum, b) => sum + b.loanAmount, 0);
-  const percentPaid = loan.principal > 0 ? Math.round((totalPaid / loan.principal) * 100) : 0;
+  const remainingBalance = Math.max(loan.principal - totalPaid, 0);
 
   return (
     <AppShell
-      title={`Loan for ${loan.clientName}`}
-      description={`${loan.category} • ${loan.status}`}
+      title={`Loan: ${loan.clientName}`}
+      description="Individual loan detail with payment breakdown and financial tracking."
       badge="Loan Detail"
       currentPath="/loans"
     >
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16, marginBottom: 24 }}>
-        <div>
-          <h2 style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: "1.8rem" }}>
-            {formatCurrency(loan.principal)}
-          </h2>
-          <p className="table-muted" style={{ margin: "4px 0 0" }}>
-            {loan.category} • {loan.repaymentFrequency}
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <span className={`status-pill status-pill-${loan.status}`}>{loan.status}</span>
-          <span className={`status-pill status-pill-${loan.workflowStatus}`}>{loan.workflowStatus}</span>
-        </div>
-      </div>
+      <button className="btn-secondary" onClick={() => router.push("/loans")} style={{ marginBottom: 20, display: "inline-flex", alignItems: "center", gap: 8 }}>
+        <ArrowLeft size={16} /> Back to Portfolio
+      </button>
 
-      {/* Repayment Progress */}
-      <div className="stat-card tone-blue" style={{ marginBottom: 20 }}>
-        <span className="stat-label">Repayment Progress</span>
-        <div style={{ marginTop: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <strong>{percentPaid}%</strong>
-            <span className="table-muted">
-              {formatCurrency(totalPaid)} of {formatCurrency(loan.principal)}
-            </span>
+      {/* Loan Overview */}
+      <SectionCard style={{ marginBottom: 22 }}>
+        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <h2 style={{ marginBottom: 8 }}>{loan.clientName}</h2>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+              <span className={`status-pill status-pill-${loan.status}`}>{loan.status}</span>
+              <span className="chip">{loan.category}</span>
+              <span className="chip">{loan.repaymentFrequency}</span>
+            </div>
           </div>
-          <ProgressBar paid={totalPaid} total={loan.principal} />
-        </div>
-        {loan.balance > 0 && (
-          <p className="stat-helper" style={{ marginTop: 10 }}>
-            Remaining balance: <strong>{formatCurrency(loan.balance)}</strong>
-          </p>
-        )}
-      </div>
-
-      {/* Key Metrics */}
-      <div className="metric-grid" style={{ marginBottom: 24 }}>
-        <StatCard label="Balance" value={formatCurrency(loan.balance)} helper="Remaining principal" tone="blue" />
-        <StatCard label="Due Date" value={formatDate(loan.dueDate)} helper="Repayment deadline" tone="amber" />
-        <StatCard label="Interest Rate" value={`${(loan.interestRate * 100).toFixed(1)}%`} helper="Annual rate" tone="emerald" />
-        <StatCard label="Payments" value={String(loan.paymentBreakdowns.length)} helper="Total payments received" tone="rose" />
-        {loan.termWeeks > 0 && (
-          <StatCard label="Term" value={`${loan.termWeeks} weeks`} helper="Loan period" tone="blue" />
-        )}
-        {loan.penaltyRate > 0 && (
-          <StatCard label="Penalty" value={`${(loan.penaltyRate * 100).toFixed(1)}%`} helper="Overdue penalty rate" tone="rose" />
-        )}
-      </div>
-
-      {/* Payment Breakdown */}
-      <SectionCard
-        title="Payment Breakdown"
-        description={`${loan.paymentBreakdowns.length} payment(s) recorded for this loan.`}
-      >
-        {loan.paymentBreakdowns.length === 0 ? (
-          <EmptyState title="No payments yet" description="This loan has no recorded payments." />
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead className="table-head">
-                <tr>
-                  <th>Date</th>
-                  <th>Receipt</th>
-                  <th>Loan Amount</th>
-                  <th>Savings</th>
-                  <th>Rounded</th>
-                  <th>Total</th>
-                  <th>Channel</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loan.paymentBreakdowns.map((p: PaymentBreakdownRecord) => (
-                  <tr className="table-row" key={p.id}>
-                    <td>{formatDate(p.paymentDate)}</td>
-                    <td>{p.receiptNumber || "—"}</td>
-                    <td>{formatCurrency(p.loanAmount)}</td>
-                    <td>{formatCurrency(p.savingsAmount)}</td>
-                    <td>{formatCurrency(p.roundedBucketAmount)}</td>
-                    <td>{formatCurrency(p.totalAmount)}</td>
-                    <td>
-                      <span className="chip">{p.sourceChannel}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: "2rem", fontWeight: 800, fontFamily: "var(--font-display)", color: "var(--text-primary)" }}>
+              {formatCurrency(loan.principal)}
+            </div>
+            <div className="table-muted">Principal</div>
           </div>
-        )}
+        </div>
+
+        <div className="metric-grid" style={{ marginTop: 20 }}>
+          <StatCard label="Balance" value={formatCurrency(remainingBalance)} helper={`of ${formatCurrency(loan.principal)} principal`} tone="blue" />
+          <StatCard label="Interest" value={formatCurrency(loan.interestAmount)} helper={`Rate: ${loan.interestRate}%`} tone="amber" />
+          <StatCard label="Total Repayment" value={formatCurrency(loan.totalRepayment)} helper={`Net disbursed: ${formatCurrency(loan.netDisbursed)}`} tone="emerald" />
+          <StatCard label="Due Date" value={formatDate(loan.dueDate)} helper={`${loan.termWeeks} weeks • ${loan.loanPeriodDays} days`} tone="rose" />
+        </div>
       </SectionCard>
 
-      {/* Loan Details Summary */}
-      <SectionCard title="Loan Details" style={{ marginTop: 22 }}>
-        <div className="detail-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
-          {loan.clientId && <DetailRow label="Client ID" value={loan.clientId} />}
-          <DetailRow label="Principal" value={formatCurrency(loan.principal)} />
-          <DetailRow label="Net Disbursed" value={formatCurrency(loan.netDisbursed)} />
-          <DetailRow label="Total Repayment" value={formatCurrency(loan.totalRepayment)} />
-          <DetailRow label="Processing Fee" value={formatCurrency(loan.processingFee)} />
-          <DetailRow label="Insurance Fee" value={formatCurrency(loan.insuranceFee)} />
-          <DetailRow label="Interest Amount" value={formatCurrency(loan.interestAmount)} />
-          <DetailRow label="Funds Transfer Fee" value={formatCurrency(loan.fundsTransferFee)} />
-          <DetailRow label="Unpaid Shares" value={formatCurrency(loan.unpaidShares)} />
-          <DetailRow label="Unpaid Savings" value={formatCurrency(loan.unpaidSavings)} />
-          <DetailRow label="Loan Period" value={`${loan.loanPeriodDays} days`} />
-          <DetailRow label="Weekly Contribution" value={formatCurrency(loan.dailyContribution)} />
-          <DetailRow label="Collateral Fee" value={formatCurrency(loan.collateralJointFee)} />
-          {loan.approvedAt && <DetailRow label="Approved At" value={formatDate(loan.approvedAt)} />}
-          {loan.submittedAt && <DetailRow label="Submitted" value={formatDateTime(loan.submittedAt)} />}
+      {/* Loan Charges Breakdown */}
+      <SectionCard title="Loan Charges" description="Full breakdown of fees and deductions." style={{ marginBottom: 22 }}>
+        <div className="table-wrap">
+          <table>
+            <thead className="table-head">
+              <tr><th>Item</th><th>Amount</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Principal</td><td><strong>{formatCurrency(loan.principal)}</strong></td></tr>
+              <tr><td>Interest</td><td>{formatCurrency(loan.interestAmount)}</td></tr>
+              <tr><td>Processing Fee</td><td>{formatCurrency(loan.processingFee)}</td></tr>
+              <tr><td>Insurance Fee</td><td>{formatCurrency(loan.insuranceFee)}</td></tr>
+              <tr><td>Funds Transfer Fee</td><td>{formatCurrency(loan.fundsTransferFee)}</td></tr>
+              <tr><td>Collateral Joint Fee</td><td>{formatCurrency(loan.collateralJointFee)}</td></tr>
+              <tr><td>Total Deductions</td><td style={{ fontWeight: 800 }}>{formatCurrency(loan.totalDeductions)}</td></tr>
+              <tr><td>Total Repayment</td><td style={{ fontWeight: 800, color: "var(--sbc-emerald)" }}>{formatCurrency(loan.totalRepayment)}</td></tr>
+              <tr><td>Net Disbursed</td><td style={{ fontWeight: 800 }}>{formatCurrency(loan.netDisbursed)}</td></tr>
+            </tbody>
+          </table>
         </div>
       </SectionCard>
+
+      {/* Tab Navigation */}
+      <div style={{ display: "flex", gap: 4, marginTop: 24, marginBottom: 16, borderBottom: "1px solid var(--line)", paddingBottom: 0 }}>
+        {[
+          { key: "overview", label: "Overview" },
+          { key: "payments", label: `Payments (${loan.paymentBreakdowns.length})` },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: "10px 16px", border: "none", background: "transparent",
+              color: activeTab === tab.key ? "var(--text-primary)" : "var(--text-muted)",
+              borderBottom: activeTab === tab.key ? "2px solid var(--sbc-primary)" : "2px solid transparent",
+              cursor: "pointer", fontSize: "0.9rem", fontWeight: 600, fontFamily: "var(--font-body)",
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab Content */}
+      <div>
+        {activeTab === "overview" && (
+          <div className="two-up">
+            <SectionCard title="Workflow Status">
+              <div className="mini-stat">
+                <span className="mini-label"><Clock size={14} /> Workflow</span>
+                <strong className="mini-value" style={{ fontSize: "1rem", color: "var(--text-primary)" }}>
+                  {loan.workflowStatus.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                </strong>
+              </div>
+              <div className="mini-stat">
+                <span className="mini-label"><DollarSign size={14} /> Total Paid</span>
+                <strong className="mini-value">{formatCurrency(totalPaid)}</strong>
+              </div>
+              <div className="mini-stat">
+                <span className="mini-label"><Percent size={14} /> Interest Rate</span>
+                <strong className="mini-value">{loan.interestRate}%</strong>
+              </div>
+              <div className="mini-stat">
+                <span className="mini-label"><Calendar size={14} /> Penalty Rate</span>
+                <strong className="mini-value">{loan.penaltyRate}%</strong>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Savings Linked to Loan">
+              <div className="mini-stat">
+                <span className="mini-label">Daily Savings Deduction</span>
+                <strong className="mini-value">{formatCurrency(loan.savingsAmount)}</strong>
+              </div>
+              <div className="mini-stat">
+                <span className="mini-label">Unpaid Shares</span>
+                <strong className="mini-value">{formatCurrency(loan.unpaidShares)}</strong>
+              </div>
+              <div className="mini-stat">
+                <span className="mini-label">Unpaid Savings</span>
+                <strong className="mini-value">{formatCurrency(loan.unpaidSavings)}</strong>
+              </div>
+              <div className="mini-stat">
+                <span className="mini-label">Multiplier Redirect</span>
+                <strong className="mini-value">{formatCurrency(loan.unpaidSavings)}</strong>
+              </div>
+            </SectionCard>
+          </div>
+        )}
+
+        {activeTab === "payments" && (
+          <SectionCard title="Payment Breakdown" description="All payments applied to this loan.">
+            {loan.paymentBreakdowns.length > 0 ? (
+              <div className="table-wrap">
+                <table>
+                  <thead className="table-head">
+                    <tr>
+                      <th>Date</th>
+                      <th>Receipt</th>
+                      <th>Total Paid</th>
+                      <th>→ Loan</th>
+                      <th>→ Savings</th>
+                      <th>→ Rounding</th>
+                      <th>Channel</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loan.paymentBreakdowns.map((payment: PaymentBreakdownRecord) => (
+                      <tr className="table-row" key={payment.id}>
+                        <td>{formatDate(payment.paymentDate)}</td>
+                        <td>{payment.receiptNumber || "—"}</td>
+                        <td><strong>{formatCurrency(payment.totalAmount)}</strong></td>
+                        <td>{formatCurrency(payment.loanAmount)}</td>
+                        <td>{formatCurrency(payment.savingsAmount)}</td>
+                        <td>{formatCurrency(payment.roundedBucketAmount)}</td>
+                        <td>
+                          <span className="chip">{payment.sourceChannel}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{ textAlign: "center", padding: "30px 0", color: "var(--text-muted)" }}>
+                <p>No payments recorded for this loan yet.</p>
+              </div>
+            )}
+          </SectionCard>
+        )}
+      </div>
     </AppShell>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div style={{ padding: 12, background: "rgba(255,255,255,0.03)", borderRadius: 12, border: "1px solid var(--line)" }}>
-      <div className="table-muted" style={{ fontSize: 0.82, marginBottom: 4 }}>{label}</div>
-      <div style={{ fontWeight: 600 }}>{value}</div>
-    </div>
   );
 }

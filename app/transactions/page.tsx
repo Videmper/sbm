@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/empty-state";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { getTransactionsSnapshot } from "@/lib/data";
 import type { PagedResult, TransactionRecord, GetTransactionsParams } from "@/lib/types";
+import { Search, ArrowDownLeft, ArrowUpRight, Filter, AlertCircle } from "lucide-react";
 
 interface PageProps {
   searchParams: Promise<{ page?: string; query?: string }>;
@@ -25,11 +26,8 @@ export default function TransactionsPage({ searchParams }: PageProps) {
       try {
         const data = await getTransactionsSnapshot({ ...params, query: searchQuery });
         if (!cancelled) setResult(data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      } catch (err) { console.error(err); }
+      finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, [params.page, params.limit, searchQuery]);
@@ -42,14 +40,7 @@ export default function TransactionsPage({ searchParams }: PageProps) {
     })();
   }, [searchParams]);
 
-  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    params.page = 1;
-  };
-
-  const handlePageChange = (newPage: number) => {
-    params.page = newPage;
-  };
+  const handlePageChange = (newPage: number) => setParams((p) => ({ ...p, page: newPage }));
 
   const sourcePillClass = (source: string) => {
     const map: Record<string, string> = {
@@ -60,38 +51,50 @@ export default function TransactionsPage({ searchParams }: PageProps) {
     return map[source] || "status-pill-defaulted";
   };
 
+  const typePillClass = (type: string) => {
+    if (type === "deposit" || type === "payment") return "status-pill-active";
+    if (type === "withdrawal") return "status-pill-defaulted";
+    return "status-pill-review";
+  };
+
+  const sourceLabel = (source: string) => {
+    const map: Record<string, string> = {
+      mpesa: "M-PESA",
+      legacy: "Legacy Sync",
+      live: "Live",
+    };
+    return map[source] || source;
+  };
+
   return (
     <AppShell
       title="Transactions"
-      description="Unified visibility for live collections, legacy imports, and M-PESA receipts."
+      description="Unified transaction stream from M-PESA callbacks, legacy sync, and live collections."
       badge="Collections"
       currentPath="/transactions"
     >
       <SectionCard
-        title="Collection Stream"
-        description="This page is positioned to replace the old mixed transaction screen with one clean timeline."
+        title="Transaction Stream"
+        description="All payment activities across collection channels in one view."
       >
-        <form onSubmit={handleSearch} style={{ marginBottom: 16 }}>
+        <form style={{ marginBottom: 16, position: "relative" }}>
+          <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", zIndex: 1 }} />
           <input
             type="search"
             placeholder="Search by receipt number or payer phone..."
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); params.page = 1; }}
             style={{
-              width: "100%",
-              minHeight: 44,
-              borderRadius: 12,
-              border: "1px solid rgba(239,248,255,0.1)",
-              background: "rgba(239,248,255,0.05)",
-              color: "var(--text)",
-              padding: "0 16px",
-              fontSize: "0.95rem",
+              width: "100%", minHeight: 44, borderRadius: 10,
+              border: "1px solid rgba(255,255,255,0.1)",
+              background: "rgba(255,255,255,0.05)", color: "var(--text)",
+              padding: "0 16px 0 40px", fontSize: "0.95rem", outline: "none",
             }}
           />
         </form>
 
         {loading && (
-          <div style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+          <div style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>
             Loading transactions…
           </div>
         )}
@@ -99,7 +102,9 @@ export default function TransactionsPage({ searchParams }: PageProps) {
         {!loading && result && result.data.length === 0 && (
           <EmptyState
             title="No transactions found"
-            description={searchQuery ? `No results for "${searchQuery}"` : "No transactions recorded yet."}
+            description={searchQuery
+              ? `No results for "${searchQuery}"`
+              : "No transactions recorded yet. M-PESA callbacks will appear here once configured."}
           />
         )}
 
@@ -109,30 +114,38 @@ export default function TransactionsPage({ searchParams }: PageProps) {
               <table>
                 <thead className="table-head">
                   <tr>
+                    <th>Date</th>
                     <th>Source</th>
                     <th>Client</th>
                     <th>Amount</th>
+                    <th>Type</th>
                     <th>Reference</th>
-                    <th>Method</th>
-                    <th>Recorded</th>
                   </tr>
                 </thead>
                 <tbody>
                   {result.data.map((transaction) => (
                     <tr className="table-row" key={transaction.id}>
+                      <td className="table-muted">{formatDateTime(transaction.recordedAt)}</td>
                       <td>
                         <span className={sourcePillClass(transaction.source)}>
-                          {transaction.source}
+                          {sourceLabel(transaction.source)}
                         </span>
                       </td>
                       <td>
-                        {transaction.clientName}
-                        <div className="table-muted">{transaction.notes}</div>
+                        <strong>{transaction.clientName}</strong>
                       </td>
-                      <td>{formatCurrency(transaction.amount)}</td>
-                      <td>{transaction.reference}</td>
-                      <td>{transaction.method}</td>
-                      <td>{formatDateTime(transaction.recordedAt)}</td>
+                      <td>
+                        <span style={{ color: transaction.type === "withdrawal" || transaction.type === "reversal" ? "var(--sbc-rose)" : "var(--text-primary)" }}>
+                          {transaction.type === "withdrawal" || transaction.type === "reversal" ? "-" : "+"}
+                          {formatCurrency(transaction.amount)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`chip ${typePillClass(transaction.type)}`}>
+                          {transaction.type}
+                        </span>
+                      </td>
+                      <td className="table-muted">{transaction.reference}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -148,17 +161,17 @@ export default function TransactionsPage({ searchParams }: PageProps) {
                   className="btn-secondary"
                   disabled={!result.hasPrev}
                   onClick={() => handlePageChange(result.page - 1)}
-                  style={{ minHeight: 38, padding: "0 14px", borderRadius: 10, cursor: result.hasPrev ? "pointer" : "default" }}
+                  style={{ minHeight: 38, padding: "0 14px", borderRadius: 10 }}
                 >
-                  Previous
+                  ← Previous
                 </button>
                 <button
                   className="btn-primary"
                   disabled={!result.hasNext}
                   onClick={() => handlePageChange(result.page + 1)}
-                  style={{ minHeight: 38, padding: "0 14px", borderRadius: 10, cursor: result.hasNext ? "pointer" : "default" }}
+                  style={{ minHeight: 38, padding: "0 14px", borderRadius: 10 }}
                 >
-                  Next
+                  Next →
                 </button>
               </div>
             </div>

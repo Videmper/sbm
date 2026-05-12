@@ -7,6 +7,7 @@ import { StatCard } from "@/components/stat-card";
 import { EmptyState } from "@/components/empty-state";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { getSavingsSnapshot } from "@/lib/data";
+import { Search, DollarSign, Wallet, TrendingUp, PiggyBank } from "lucide-react";
 import type { PagedResult, SavingsRecord, GetSavingsParams } from "@/lib/types";
 
 interface PageProps {
@@ -26,11 +27,8 @@ export default function SavingsPage({ searchParams }: PageProps) {
       try {
         const data = await getSavingsSnapshot({ ...params, searchQuery });
         if (!cancelled) setResult(data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      } catch (err) { console.error(err); }
+      finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, [params.page, params.limit, searchQuery]);
@@ -39,9 +37,16 @@ export default function SavingsPage({ searchParams }: PageProps) {
     (async () => {
       const sp = await searchParams;
       if (sp.q) setSearchQuery(sp.q);
-      if (sp.page) params.page = Number(sp.page);
+      if (sp.page) setParams((p) => ({ ...p, page: Number(sp.page) }));
     })();
   }, [searchParams]);
+
+  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    params.page = 1;
+  };
+
+  const handlePageChange = (newPage: number) => setParams((p) => ({ ...p, page: newPage }));
 
   const totals = result?.data.reduce(
     (sum, item) => {
@@ -49,55 +54,48 @@ export default function SavingsPage({ searchParams }: PageProps) {
       sum.shares += item.mandatoryShares;
       sum.multiplier += item.multiplier;
       sum.withdrawable += item.withdrawable;
+      sum.total += item.total;
       return sum;
     },
-    { mandatory: 0, shares: 0, multiplier: 0, withdrawable: 0 },
-  ) ?? { mandatory: 0, shares: 0, multiplier: 0, withdrawable: 0 };
-
-  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    params.page = 1;
-  };
+    { mandatory: 0, shares: 0, multiplier: 0, withdrawable: 0, total: 0 },
+  ) ?? { mandatory: 0, shares: 0, multiplier: 0, withdrawable: 0, total: 0 };
 
   return (
     <AppShell
       title="Savings Portfolio"
-      description="Mandatory savings, shares, multiplier balances, and approved withdrawable amounts."
-      badge="Portfolio logic"
+      description="Multi-bucket member savings: mandatory, shares, multiplier, and withdrawable."
+      badge="Savings"
       currentPath="/savings"
     >
       <div className="metric-grid">
-        <StatCard label="Mandatory Savings" value={formatCurrency(totals.mandatory)} helper="Threshold-facing member savings" tone="emerald" />
-        <StatCard label="Mandatory Shares" value={formatCurrency(totals.shares)} helper="Membership shares currently held" tone="amber" />
-        <StatCard label="Multiplier" value={formatCurrency(totals.multiplier)} helper="Net multiplier still retained" tone="blue" />
-        <StatCard label="Withdrawable" value={formatCurrency(totals.withdrawable)} helper="Approved member-accessible funds" tone="rose" />
+        <StatCard label="Total Savings" value={formatCurrency(totals.total)} helper="All member savings combined" tone="emerald" />
+        <StatCard label="Mandatory Savings" value={formatCurrency(totals.mandatory)} helper="Threshold-facing member savings" tone="blue" />
+        <StatCard label="Membership Shares" value={formatCurrency(totals.shares)} helper="Member equity shares held" tone="amber" />
+        <StatCard label="Withdrawable" value={formatCurrency(totals.withdrawable)} helper="Approved for member withdrawal" tone="rose" />
       </div>
 
       <SectionCard
         title="Member Balances"
-        description="The Supabase schema includes dedicated tables for transfers, purpose-pool allocations, and historical overrides."
+        description="Savings breakdown per member across all buckets."
       >
-        <form onSubmit={handleSearch} style={{ marginBottom: 16 }}>
+        <form onSubmit={handleSearch} style={{ marginBottom: 16, position: "relative" }}>
+          <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", zIndex: 1 }} />
           <input
             type="search"
             placeholder="Search by member name or number..."
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); params.page = 1; }}
             style={{
-              width: "100%",
-              minHeight: 44,
-              borderRadius: 12,
-              border: "1px solid rgba(239,248,255,0.1)",
-              background: "rgba(239,248,255,0.05)",
-              color: "var(--text)",
-              padding: "0 16px",
-              fontSize: "0.95rem",
+              width: "100%", minHeight: 44, borderRadius: 10,
+              border: "1px solid rgba(255,255,255,0.1)",
+              background: "rgba(255,255,255,0.05)", color: "var(--text)",
+              padding: "0 16px 0 40px", fontSize: "0.95rem", outline: "none",
             }}
           />
         </form>
 
         {loading && (
-          <div style={{ textAlign: "center", padding: 40, color: "var(--muted)" }}>
+          <div style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>
             Loading savings…
           </div>
         )}
@@ -105,7 +103,9 @@ export default function SavingsPage({ searchParams }: PageProps) {
         {!loading && result && result.data.length === 0 && (
           <EmptyState
             title="No savings records found"
-            description={searchQuery ? `No results for "${searchQuery}"` : "No savings records available."}
+            description={searchQuery
+              ? `No results for "${searchQuery}"`
+              : "No savings records available yet."}
           />
         )}
 
@@ -120,18 +120,18 @@ export default function SavingsPage({ searchParams }: PageProps) {
                     <th>Shares</th>
                     <th>Multiplier</th>
                     <th>Withdrawable</th>
-                    <th>Updated</th>
+                    <th>Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {result.data.map((item) => (
                     <tr className="table-row" key={item.id}>
-                      <td>{item.clientName}</td>
+                      <td><strong>{item.clientName}</strong></td>
                       <td>{formatCurrency(item.mandatory)}</td>
                       <td>{formatCurrency(item.mandatoryShares)}</td>
                       <td>{formatCurrency(item.multiplier)}</td>
                       <td>{formatCurrency(item.withdrawable)}</td>
-                      <td>{formatDateTime(item.updatedAt)}</td>
+                      <td><strong>{formatCurrency(item.total)}</strong></td>
                     </tr>
                   ))}
                 </tbody>
@@ -147,18 +147,18 @@ export default function SavingsPage({ searchParams }: PageProps) {
                   <button
                     className="btn-secondary"
                     disabled={!result.hasPrev}
-                     onClick={() => setParams((p) => ({ ...p, page: (p.page ?? 1) - 1 }))}
-                    style={{ minHeight: 38, padding: "0 14px", borderRadius: 10, cursor: result.hasPrev ? "pointer" : "default" }}
+                    onClick={() => handlePageChange(result.page - 1)}
+                    style={{ minHeight: 38, padding: "0 14px", borderRadius: 10 }}
                   >
-                    Previous
+                    ← Previous
                   </button>
                   <button
                     className="btn-primary"
                     disabled={!result.hasNext}
-                     onClick={() => setParams((p) => ({ ...p, page: (p.page ?? 1) + 1 }))}
-                    style={{ minHeight: 38, padding: "0 14px", borderRadius: 10, cursor: result.hasNext ? "pointer" : "default" }}
+                    onClick={() => handlePageChange(result.page + 1)}
+                    style={{ minHeight: 38, padding: "0 14px", borderRadius: 10 }}
                   >
-                    Next
+                    Next →
                   </button>
                 </div>
               </div>
