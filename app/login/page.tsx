@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
@@ -230,11 +230,18 @@ export default function LoginPage({ searchParams }: { searchParams: Promise<{ id
 
 function LoginPageWrapper({ searchParams: searchParamsPromise }: { searchParams: Promise<{ identity?: string }> }) {
   const [searchIdentity, setSearchIdentity] = useState<string | null>(null);
-  const sp = searchParamsPromise as any;
-  const _identity = sp?.identity ?? null;
-  setSearchIdentity(_identity);
 
-  return <LoginPageClient searchIdentity={_identity} />;
+  useEffect(() => {
+    const extractIdentity = async () => {
+      const sp = await searchParamsPromise;
+      const _identity = sp?.identity ?? null;
+      setSearchIdentity(_identity);
+    };
+
+    extractIdentity();
+  }, [searchParamsPromise]);
+
+  return <LoginPageClient searchIdentity={searchIdentity} />;
 }
 
 export const dynamic = "force-dynamic";

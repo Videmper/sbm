@@ -1,4 +1,5 @@
 import type { Role } from "@/lib/types";
+import { ComponentType } from "react";
 import {
   ArrowRightLeft,
   Building2,
@@ -14,7 +15,7 @@ import {
 interface NavItem {
   href: string;
   label: string;
-  icon: typeof import("lucide-react")[string];
+  icon: ComponentType<any>;
   roles?: Role[]; // if omitted, visible to all
 }
 

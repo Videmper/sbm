@@ -1,6 +1,7 @@
 import { formatCompactNumber, formatCurrency } from "@/lib/format";
 import { createSupabaseAdminClient, isSupabaseConfigured } from "@/lib/supabase";
 import type {
+  ClientDetail,
   ClientRecord,
   DashboardAction,
   DashboardSnapshot,

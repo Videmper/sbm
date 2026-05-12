@@ -159,6 +159,7 @@ export const mockSavings: SavingsRecord[] = [
     mandatoryShares: 6800,
     multiplier: 2200,
     withdrawable: 1200,
+    total: 14600,
     updatedAt: "2026-05-10T14:20:00.000Z",
   },
   {
@@ -169,6 +170,7 @@ export const mockSavings: SavingsRecord[] = [
     mandatoryShares: 5000,
     multiplier: 4200,
     withdrawable: 0,
+    total: 12200,
     updatedAt: "2026-05-09T11:00:00.000Z",
   },
   {
@@ -179,6 +181,7 @@ export const mockSavings: SavingsRecord[] = [
     mandatoryShares: 5400,
     multiplier: 1100,
     withdrawable: 450,
+    total: 12150,
     updatedAt: "2026-05-11T06:55:00.000Z",
   },
 ];
@@ -193,6 +196,7 @@ export const mockTransactions: TransactionRecord[] = [
     reference: "SIH9K2Q8X1",
     recordedAt: "2026-05-11T08:14:00.000Z",
     notes: "Loan repayment plus savings split",
+    type: "payment",
   },
   {
     id: "txn-002",
@@ -203,6 +207,7 @@ export const mockTransactions: TransactionRecord[] = [
     reference: "LEGACY-CONTRIB-289",
     recordedAt: "2026-05-10T17:40:00.000Z",
     notes: "Recovered from old contribution history",
+    type: "deposit",
   },
   {
     id: "txn-003",
@@ -213,6 +218,7 @@ export const mockTransactions: TransactionRecord[] = [
     reference: "RCPT-240511-009",
     recordedAt: "2026-05-10T12:20:00.000Z",
     notes: "Savings-only member contribution",
+    type: "deposit",
   },
 ];
 
@@ -251,6 +257,31 @@ export const mockDashboard: DashboardSnapshot = {
   clients: mockClients,
   loans: mockLoans,
   recentTransactions: mockTransactions,
+  pendingActions: [
+    {
+      label: "Review overdue loans",
+      href: "/loans?status=active&view=overdue",
+      icon: "AlertCircle",
+      badge: "17",
+    },
+    {
+      label: "Process pending approvals",
+      href: "/loans?status=pending",
+      icon: "Clock",
+      badge: "8",
+    },
+    {
+      label: "Conduct field visits",
+      href: "/clients?view=to_visit",
+      icon: "MapPin",
+      badge: "23",
+    },
+    {
+      label: "Sync legacy transactions",
+      href: "/sync",
+      icon: "RefreshCw",
+    },
+  ],
 };
 
 export const mockReports: ReportsSnapshot = {
@@ -258,11 +289,14 @@ export const mockReports: ReportsSnapshot = {
   memberSavings: 2310000,
   purposePool: 386400,
   collectionToday: 118500,
+  totalDisbursed: 12800000,
+  totalRepaid: 9350000,
   loanBreakdown: {
     active: 156,
     approved: 24,
     pending: 38,
     defaulted: 17,
+    rejected: 12,
     completed: 89,
   },
   savingsBreakdown: {
@@ -320,6 +354,7 @@ export const mockSettings: SettingsSnapshot = {
   deploymentMode: "Modern Next.js + Supabase rollout",
   supabaseReady: false,
   mpesaReady: false,
+  dbSchemaReady: false,
   nextSteps: [
     "Paste database/fullupdate.sql into the Supabase SQL editor.",
     "Add Supabase project keys into .env.local.",
